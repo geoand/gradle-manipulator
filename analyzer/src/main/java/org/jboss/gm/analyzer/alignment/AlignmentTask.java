@@ -311,6 +311,9 @@ public class AlignmentTask extends DefaultTask {
                 // we need to make sure that dynamic dependencies are stored with their original key
                 // in order for the manipulation plugin to be able to look them up properly
                 correspondingModule.getAlignedDependencies().put(d.toString(), newVersion);
+            } else {
+                correspondingModule.getAvailableUnalignedDependencies().put(d.toString(),
+                        alignmentResponse.getAvailableAlignedVersionOfGav(p));
             }
         });
     }

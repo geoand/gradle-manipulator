@@ -48,6 +48,8 @@ public interface AlignmentService {
         Map<ProjectVersionRef, String> getTranslationMap();
 
         String getAlignedVersionOfGav(ProjectVersionRef gav);
+
+        List<String> getAvailableAlignedVersionOfGav(ProjectVersionRef gav);
     }
 
     /**

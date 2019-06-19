@@ -1,6 +1,7 @@
 package org.jboss.gm.common.model;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.lang.StringUtils;
@@ -39,6 +40,8 @@ public class ManipulationModel {
      */
     @JsonProperty
     private Map<String, ProjectVersionRef> alignedDependencies = new HashMap<>();
+
+    private Map<String, List<String>> availableUnalignedDependencies = new HashMap<>();
 
     /**
      * Representation of this project children projects if any, keyed by name.
@@ -87,6 +90,10 @@ public class ManipulationModel {
         for (ManipulationModel child : manipulationModel.getChildren().values()) {
             addDependenciesRec(child, result);
         }
+    }
+
+    public Map<String, List<String>> getAvailableUnalignedDependencies() {
+        return availableUnalignedDependencies;
     }
 
     public String getVersion() {

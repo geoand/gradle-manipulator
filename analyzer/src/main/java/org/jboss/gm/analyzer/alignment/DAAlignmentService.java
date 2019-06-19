@@ -5,6 +5,7 @@ import static org.commonjava.maven.ext.core.state.DependencyState.DependencyPrec
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -13,8 +14,8 @@ import org.apache.commons.codec.binary.Base32;
 import org.commonjava.maven.atlas.ident.ref.ProjectVersionRef;
 import org.commonjava.maven.ext.common.ManipulationUncheckedException;
 import org.commonjava.maven.ext.core.state.DependencyState;
-import org.commonjava.maven.ext.io.rest.DefaultTranslator;
-import org.commonjava.maven.ext.io.rest.Translator;
+import org.jboss.gm.analyzer.alignment.pme.DefaultTranslator;
+import org.jboss.gm.analyzer.alignment.pme.Translator;
 import org.jboss.gm.common.Configuration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,7 +24,7 @@ import org.slf4j.LoggerFactory;
  * An implementation of {@link org.jboss.gm.analyzer.alignment.AlignmentService} that uses the Dependency Analyzer service
  * in order to get the proper aligned versions of dependencies (as well as the version of the project itself)
  *
- * The heavy lifting is done by {@link org.commonjava.maven.ext.io.rest.DefaultTranslator}
+ * The heavy lifting is done by {@link org.jboss.gm.analyzer.alignment.pme.DefaultTranslator}
  */
 public class DAAlignmentService implements AlignmentService {
 
@@ -67,7 +68,7 @@ public class DAAlignmentService implements AlignmentService {
 
         logger.debug("Passing {} GAVs following into the REST client api {} ", translateRequest.size(), translateRequest);
         logger.info("Calling REST client with {} GAVS...", translateRequest.size());
-        final Map<ProjectVersionRef, String> translationMap = restEndpoint.translateVersions(translateRequest);
+        final Map<ProjectVersionRef, Translator.Value> translationMap = restEndpoint.translateVersions(translateRequest);
         logger.info("REST Client returned {} ", translationMap);
 
         return new Response(request.getProject(), translationMap);
@@ -78,9 +79,9 @@ public class DAAlignmentService implements AlignmentService {
         private final Logger logger = LoggerFactory.getLogger(getClass());
 
         private final List<ProjectVersionRef> refOfProject;
-        private final Map<ProjectVersionRef, String> translationMap;
+        private final Map<ProjectVersionRef, Translator.Value> translationMap;
 
-        Response(List<ProjectVersionRef> refOfProject, Map<ProjectVersionRef, String> translationMap) {
+        Response(List<ProjectVersionRef> refOfProject, Map<ProjectVersionRef, Translator.Value> translationMap) {
             this.refOfProject = refOfProject;
             this.translationMap = translationMap;
         }
@@ -91,17 +92,36 @@ public class DAAlignmentService implements AlignmentService {
         public String getNewProjectVersion() {
             logger.info("Retrieving project version {} and returning {} ", refOfProject.get(0),
                     translationMap.get(refOfProject.get(0)));
-            return translationMap.get(refOfProject.get(0));
+            final Translator.Value value = translationMap.get(refOfProject.get(0));
+            if (value != null) {
+                return value.getBestMatchVersion();
+            }
+            return null;
         }
 
         @Override
         public Map<ProjectVersionRef, String> getTranslationMap() {
-            return translationMap;
+            final Map<ProjectVersionRef, String> result = new HashMap<>();
+            for (Map.Entry<ProjectVersionRef, Translator.Value> entry : translationMap.entrySet()) {
+                if (entry.getValue().getBestMatchVersion() != null) {
+                    result.put(entry.getKey(), entry.getValue().getBestMatchVersion());
+                }
+            }
+            return result;
         }
 
         @Override
         public String getAlignedVersionOfGav(ProjectVersionRef gav) {
-            return translationMap.get(gav);
+            final Translator.Value value = translationMap.get(gav);
+            if (value != null) {
+                return value.getBestMatchVersion();
+            }
+            return null;
+        }
+
+        @Override
+        public List<String> getAvailableAlignedVersionOfGav(ProjectVersionRef gav) {
+            return translationMap.get(gav).getAvailableVersions();
         }
     }
 

@@ -1,6 +1,7 @@
 package org.jboss.gm.analyzer.alignment;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -93,6 +94,11 @@ public class UpdateProjectVersionCustomizer implements AlignmentService.Response
         @Override
         public String getAlignedVersionOfGav(ProjectVersionRef gav) {
             return originalResponse.getAlignedVersionOfGav(gav);
+        }
+
+        @Override
+        public List<String> getAvailableAlignedVersionOfGav(ProjectVersionRef gav) {
+            return originalResponse.getAvailableAlignedVersionOfGav(gav);
         }
 
         private class GradleVersionCalculator extends VersionCalculator {
