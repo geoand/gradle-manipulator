@@ -1,21 +1,10 @@
 package org.jboss.gm.analyzer.alignment;
 
-import static org.apache.commons.lang.StringUtils.isEmpty;
 import static org.apache.commons.lang.StringUtils.isNotBlank;
 import static org.gradle.api.Project.DEFAULT_VERSION;
 import static org.jboss.gm.common.io.ManipulationIO.writeManipulationModel;
 
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.net.URL;
-import java.nio.charset.Charset;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -24,9 +13,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.aeonbits.owner.ConfigCache;
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.filefilter.DirectoryFileFilter;
-import org.apache.commons.io.filefilter.SuffixFileFilter;
 import org.apache.commons.lang.StringUtils;
 import org.commonjava.maven.atlas.ident.ref.ProjectVersionRef;
 import org.commonjava.maven.atlas.ident.ref.SimpleProjectVersionRef;
@@ -41,11 +27,9 @@ import org.gradle.api.artifacts.ModuleVersionSelector;
 import org.gradle.api.artifacts.ProjectDependency;
 import org.gradle.api.artifacts.ResolvedDependency;
 import org.gradle.api.artifacts.UnresolvedDependency;
-import org.gradle.api.artifacts.repositories.ArtifactRepository;
 import org.gradle.api.internal.artifacts.configurations.ConflictResolution;
 import org.gradle.api.internal.artifacts.ivyservice.resolutionstrategy.DefaultResolutionStrategy;
 import org.gradle.api.tasks.TaskAction;
-import org.jboss.gm.analyzer.alignment.groovy.GMEBaseScript;
 import org.jboss.gm.analyzer.alignment.io.LockfileIO;
 import org.jboss.gm.common.Configuration;
 import org.jboss.gm.common.ManipulationCache;
@@ -55,10 +39,6 @@ import org.jboss.gm.common.versioning.DynamicVersionParser;
 import org.jboss.gm.common.versioning.ProjectVersionFactory;
 import org.jboss.gm.common.versioning.RelaxedProjectVersionRef;
 import org.slf4j.Logger;
-
-import groovy.lang.Binding;
-import groovy.lang.GroovyShell;
-import groovy.lang.Script;
 
 /**
  * The actual Gradle task that creates the {@code manipulation.json} file for the whole project
@@ -153,123 +133,17 @@ public class AlignmentTask extends DefaultTask {
 
                 logger.info("Completed processing for alignment and writing {} ", cache.toString());
 
-                final String newProjectName = writeProjectNameIfNeeded();
-                if ((newProjectName != null) && !newProjectName.isEmpty()) {
-                    alignmentModel.setName(newProjectName);
-                }
                 writeManipulationModel(project.getRootDir(), alignmentModel);
-                writeGmeMarkerFile();
-                writeGmeReposMarkerFile();
-                updateAllExtraGradleFilesWithGmeRepos();
-                writeGmeConfigMarkerFile();
-                writeRepositorySettingsFile(cache.getRepositories());
-
-                runCustomGroovyScript(configuration, project.getRootProject(), alignmentModel);
             }
-
-            // this needs to happen for each project, not just the last one
-            LockfileIO.renameAllLockFiles(getLocksRootPath(project));
 
         } catch (ManipulationException e) {
             throw new ManipulationUncheckedException(e);
-        } catch (IOException e) {
-            throw new ManipulationUncheckedException("Failed to write marker file", e);
         }
     }
 
     // TODO: we might need to make this configurable
     private Path getLocksRootPath(Project project) {
         return project.getProjectDir().toPath().resolve("gradle/dependency-locks");
-    }
-
-    private void writeGmeMarkerFile() throws IOException, ManipulationException {
-        File rootDir = getProject().getRootDir();
-        File gmeGradle = new File(rootDir, GME);
-        File rootGradle = new File(rootDir, Project.DEFAULT_BUILD_FILE);
-
-        if (!gmeGradle.exists()) {
-            Files.copy(getClass().getResourceAsStream('/' + GME), gmeGradle.toPath(), StandardCopyOption.REPLACE_EXISTING);
-        }
-
-        if (rootGradle.exists()) {
-
-            List<String> lines = FileUtils.readLines(rootGradle, Charset.defaultCharset());
-            List<String> result = new ArrayList<>();
-
-            String first = org.jboss.gm.common.utils.FileUtils.getFirstLine(lines);
-
-            // Check if the first non-blank line is the gme phrase, otherwise inject it.
-            if (!INJECT_GME_START.equals(first.trim())) {
-                result.add(System.lineSeparator());
-                result.add(INJECT_GME_START);
-                result.add(System.lineSeparator());
-                result.addAll(lines);
-
-                FileUtils.writeLines(rootGradle, result);
-            }
-
-        } else {
-            logger.warn("Unable to find build.gradle in {} to modify.", rootDir);
-        }
-    }
-
-    private void writeGmeReposMarkerFile() throws IOException {
-        File rootDir = getProject().getRootDir();
-        File gmeReposGradle = new File(rootDir, GME_REPOS);
-
-        Files.copy(getClass().getResourceAsStream('/' + GME_REPOS), gmeReposGradle.toPath(),
-                StandardCopyOption.REPLACE_EXISTING);
-    }
-
-    private void updateAllExtraGradleFilesWithGmeRepos() throws IOException, ManipulationException {
-        final File rootDir = getProject().getRootDir();
-        final File gradleScriptsDirectory = rootDir.toPath().resolve("gradle").toFile();
-        if (!gradleScriptsDirectory.exists()) {
-            return;
-        }
-        final Collection<File> extraGradleScripts = FileUtils.listFiles(gradleScriptsDirectory, new SuffixFileFilter(".gradle"),
-                DirectoryFileFilter.DIRECTORY);
-        for (File extraGradleScript : extraGradleScripts) {
-            final List<String> lines = FileUtils.readLines(extraGradleScript, Charset.defaultCharset());
-
-            if (!APPLY_GME_REPOS.equals(org.jboss.gm.common.utils.FileUtils.getFirstLine(lines))) {
-                final List<String> result = new ArrayList<>(lines.size() + 2);
-                result.add(APPLY_GME_REPOS);
-                result.add(System.lineSeparator());
-                result.addAll(lines);
-                FileUtils.writeLines(extraGradleScript, result);
-            }
-        }
-    }
-
-    private void writeGmeConfigMarkerFile() throws IOException {
-        File rootDir = getProject().getRootDir();
-        File gmeGradle = new File(rootDir, GME_PLUGINCONFIGS);
-        File rootGradle = new File(rootDir, Project.DEFAULT_BUILD_FILE);
-
-        if (!gmeGradle.exists()) {
-            Files.copy(getClass().getResourceAsStream('/' + GME_PLUGINCONFIGS), gmeGradle.toPath(),
-                    StandardCopyOption.REPLACE_EXISTING);
-        }
-
-        if (rootGradle.exists()) {
-
-            String line = org.jboss.gm.common.utils.FileUtils.getLastLine(rootGradle);
-            logger.debug("Read line '{}' from build.gradle", line);
-
-            if (!line.trim().equals(INJECT_GME_END)) {
-                // Haven't appended it before.
-                try (BufferedWriter writer = new BufferedWriter(new FileWriter(rootGradle, true))) {
-                    // Ensure the marker is on a line by itself.
-                    writer.newLine();
-                    writer.write(INJECT_GME_END);
-                    writer.newLine();
-                    writer.flush();
-                }
-            }
-        } else {
-            logger.warn("Unable to find build.gradle in {} to modify.", rootDir);
-        }
     }
 
     private HashMap<RelaxedProjectVersionRef, ProjectVersionRef> getDependencies(Project project,
@@ -441,27 +315,6 @@ public class AlignmentTask extends DefaultTask {
         });
     }
 
-    /**
-     * Writes a maven settings file containing artifact repositories used by this project.
-     */
-    private void writeRepositorySettingsFile(Collection<ArtifactRepository> repositories) {
-        Configuration config = ConfigCache.getOrCreate(Configuration.class);
-
-        String repositoriesFilePath = config.repositoriesFile();
-        if (!isEmpty(repositoriesFilePath)) {
-            File repositoriesFile;
-            if (Paths.get(repositoriesFilePath).isAbsolute()) {
-                repositoriesFile = new File(config.repositoriesFile());
-            } else {
-                repositoriesFile = new File(getProject().getRootDir(), repositoriesFilePath);
-            }
-
-            new RepositoryExporter(repositories).export(repositoriesFile);
-        } else {
-            getProject().getLogger().info("Repository export disabled.");
-        }
-    }
-
     private HashMap<RelaxedProjectVersionRef, ProjectVersionRef> processAnyExistingManipulationFile(Project project,
             HashMap<RelaxedProjectVersionRef, ProjectVersionRef> allDependencies) {
         // If there is an existing manipulation file, also use this as potential candidates.
@@ -501,78 +354,4 @@ public class AlignmentTask extends DefaultTask {
         return allDependencies;
     }
 
-    // we need to make sure that the name of the root project is stored if not set
-    // this is because the manipulation plugin must use the same name
-    // otherwise the model won't be found
-    // see also: https://discuss.gradle.org/t/rootproject-name-in-settings-gradle-vs-projectname-in-build-gradle/5704/4
-
-    private String writeProjectNameIfNeeded() throws IOException {
-        File rootDir = getProject().getRootDir();
-        File settingsGradle = new File(rootDir, "settings.gradle");
-
-        if (!settingsGradle.exists()) {
-            return null;
-        }
-
-        List<String> lines = FileUtils.readLines(settingsGradle, Charset.defaultCharset());
-        for (String line : lines) {
-            if (line.contains("rootProject.name")) {
-                return null;
-            }
-        }
-
-        final String newProjectName = "rootProject";
-
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(settingsGradle, true))) {
-            // Ensure the marker is on a line by itself.
-            writer.newLine();
-
-            writer.write("rootProject.name='" + newProjectName + "'");
-            writer.newLine();
-            writer.flush();
-        }
-
-        return newProjectName;
-    }
-
-    // for now we simply assume that the script is called gme.groovy and already resides in the project's root directory
-    private void runCustomGroovyScript(Configuration configuration, Project rootProject, ManipulationModel alignmentModel)
-            throws IOException, ManipulationException {
-
-        final List<File> groovyFiles = new ArrayList<>();
-        final String[] scripts = configuration.groovyScripts();
-
-        if (scripts != null) {
-            int i = 0;
-            for (String script : scripts) {
-                logger.info("Attempting to read URL {} ", script);
-                File remote = new File(rootProject.getRootDir(), "gme-" + i + "groovy");
-                FileUtils.copyURLToFile(new URL(script), remote);
-                groovyFiles.add(remote);
-            }
-        }
-        // Also check for a default gme.groovy as well as remote files.
-        groovyFiles.add(new File(rootProject.getRootDir(), "gme.groovy"));
-
-        for (File scriptFile : groovyFiles) {
-
-            if (scriptFile.exists()) {
-                final Binding binding = new Binding();
-                // We use the current class' classloader so the script has access to this plugin's API and the
-                // groovy API.
-                final GroovyShell groovyShell = new GroovyShell(this.getClass().getClassLoader(), binding);
-                final Script script = groovyShell.parse(scriptFile);
-
-                logger.info("Attempting to invoke groovy script {} ", scriptFile);
-
-                // Inject the values via a new BaseScript so user's can have completion.
-                if (script instanceof GMEBaseScript) {
-                    ((GMEBaseScript) script).setValues(rootProject, alignmentModel);
-                } else {
-                    throw new ManipulationException("Cannot cast " + script + " to a BaseScript to set values.");
-                }
-                script.run();
-            }
-        }
-    }
 }

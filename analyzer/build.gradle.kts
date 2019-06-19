@@ -45,27 +45,6 @@ dependencies {
     testCompile("com.github.tomakehurst:wiremock-jre8:2.23.2")
 }
 
-// separate source set and task for functional tests
-
-sourceSets.create("functionalTest") {
-    java.srcDir("src/functTest/java")
-    resources.srcDir("src/functTest/resources")
-    compileClasspath += sourceSets["main"].output + configurations.testRuntime
-    runtimeClasspath += output + compileClasspath
-}
-
-val functionalTest = task<Test>("functionalTest") {
-    description = "Runs functional tests"
-    group = "verification"
-    testClassesDirs = sourceSets["functionalTest"].output.classesDirs
-    classpath = sourceSets["functionalTest"].runtimeClasspath
-    mustRunAfter(tasks["test"])
-    //this will be used in the Wiremock tests - the port needs to match what Wiremock is setup to use
-    environment("DA_ENDPOINT_URL", "http://localhost:8089/da/rest/v-1")
-}
-
-tasks.check { dependsOn(functionalTest) }
-
 tasks {
     //this is done in order to use the proper version in the init gradle files
     "processResources"(ProcessResources::class) {
